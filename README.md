@@ -90,8 +90,8 @@ def test_name(model: giskard.Model, dataset: giskard.Dataset):
     
     # test logic 
     
-    # metric indicate some meaningfull value associated with test like peformance drop.
-    # message desribes the test outcome
+    # metric indicates some meaningfull value associated with test like peformance drop.
+    # message desribes the test outcome.
 
     # test passed
     return giskard.TestResult.passed(
