@@ -75,3 +75,34 @@ The repository includes example files demonstrating the full workflow. The sampl
 > [https://www.nature.com/articles/s41597-021-00921-y](https://www.nature.com/articles/s41597-021-00921-y)
 
 This example illustrates how the system can be used to assess energy forecasting models under regulatory-oriented robustness and reliability criteria.
+
+## Custom tests
+For some applications, special tests might be required like evaluating peformance during peak hours or under extreme temperatures. Custom tests are added to `app/main.py` using the following template: 
+
+```python
+@giskard.test(
+    name="Name",
+    tags=["regression", "sanity"]
+)
+def test_name(model: giskard.Model, dataset: giskard.Dataset):
+    # load predictions from the whole dataframe or from slice 
+    preds = model.predict(dataset.df)
+    
+    # test logic 
+    
+    # metric indicate some meaningfull value associated with test like peformance drop.
+    # message desribes the test outcome
+
+    # test passed
+    return giskard.TestResult.passed(
+        metric=0,
+        message="message",
+    )
+    
+    # error
+    return giskard.TestResult.failed(
+        metric=0,
+        message="message",
+    )
+```
+Custom tests run automaticaly after `model.scan()` call. 
