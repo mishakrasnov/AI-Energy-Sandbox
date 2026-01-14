@@ -3,6 +3,7 @@ from typing import List
 import importlib.util
 import sys
 from pathlib import Path
+from fastapi import Query
 from ydata_profiling import ProfileReport 
 from fastapi.responses import HTMLResponse
 import os
@@ -11,10 +12,11 @@ import giskard
 import importlib
 app = FastAPI()
 
-UPLOAD_DIR = Path(".")
-ALLOWED_EXTENSIONS = {".csv"}
 MAX_DATASET_SIZE = 100 * 1024 * 1024  # 100 MB
 MAX_FILE_SIZE = 100_000  # 100 KB (reasonable for model.py)
+
+SUBMISSIONS_ROOT = Path("submissions")
+SUBMISSIONS_ROOT.mkdir(exist_ok=True)
 
 @app.get("/")
 async def root():
@@ -22,7 +24,10 @@ async def root():
 
 
 @app.post("/upload/model")
-async def upload_model(model_file: UploadFile = File(...), checkpoint_file: UploadFile = File(...)):
+async def upload_model(
+    submission_id: str = Query(...),
+    model_file: UploadFile = File(...), 
+    checkpoint_file: UploadFile = File(...)):
     """
     Args:
         model_file (UploadFile, optional): _description_. Defaults to File(...).
@@ -40,15 +45,18 @@ async def upload_model(model_file: UploadFile = File(...), checkpoint_file: Uplo
 
     if len(contents) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="model.py too large")
+    
+    submission_dir = SUBMISSIONS_ROOT / submission_id
+    submission_dir.mkdir(exist_ok=True)
 
-    model_path = UPLOAD_DIR / "model.py"
+    model_path = submission_dir / "model.py"
     model_path.write_bytes(contents)
     
     if checkpoint_file.filename != "checkpoint":
         raise HTTPException(status_code=400, detail="File must be named checkpoint")
     
     checkpoint_contents = await checkpoint_file.read()
-    checkpoint_path = UPLOAD_DIR / "checkpoint"
+    checkpoint_path = submission_dir / "checkpoint"
     checkpoint_path.write_bytes(checkpoint_contents)
 
     return {
@@ -57,6 +65,7 @@ async def upload_model(model_file: UploadFile = File(...), checkpoint_file: Uplo
     
 @app.post("/upload/data")
 async def upload_data(
+    submission_id: str = Query(...),
     file: UploadFile | None = File(None),
 ):
     """
@@ -73,8 +82,11 @@ async def upload_data(
     
     if len(contents) > MAX_DATASET_SIZE: 
         raise HTTPException(400, "File too large")
-
-    dst_dir = UPLOAD_DIR
+    
+    submission_dir = SUBMISSIONS_ROOT / submission_id
+    submission_dir.mkdir(exist_ok=True)
+    
+    dst_dir = submission_dir
     dst_path = dst_dir / file.filename
     dst_path.write_bytes(contents)
 
@@ -90,21 +102,29 @@ async def upload_data(
     }
 
 @app.get("/check_data")
-async def check_data():
+async def check_data(
+    submission_id: str = Query(...)
+):
     """
     Calculates data profiling report using ydata-profiling library. Report includes:
     missing values, distributions, correlations, etc.
     """
-    if not os.path.exists('data.csv'):
+    submission_dir = SUBMISSIONS_ROOT / submission_id
+    if not submission_dir.exists():
+        raise HTTPException(status_code=400, detail="Submission ID not found")
+
+    if not os.path.exists(submission_dir / 'data.csv'):
         raise HTTPException(status_code=400, detail="The data.csv must be uploaded before checking the data")
 
-    data = pd.read_csv('data.csv')
+    data = pd.read_csv(submission_dir / 'data.csv')
     profile = ProfileReport(data, title="Data Profiling Report")
 
     return HTMLResponse(content = profile.to_html())
 
 @app.get("/check_model")
-async def check_model():
+async def check_model(
+    submission_id: str = Query(...)
+):
     """
     Runs automatic tests listed in https://github.com/Giskard-AI/giskard-oss/tree/main/giskard/scanner,
     which include tag "regression"
@@ -123,22 +143,26 @@ async def check_model():
         6. Loss based https://github.com/Giskard-AI/giskard-oss/blob/main/giskard/scanner/common/loss_based_detector.py 
             - EU AI Act Articles 9 & 15
     """
-    if not os.path.exists('data.csv'):
+    submission_dir = SUBMISSIONS_ROOT / submission_id
+    if not submission_dir.exists():
+        raise HTTPException(status_code=400, detail="Submission ID not found")
+    
+    if not os.path.exists(submission_dir / 'data.csv'):
         raise HTTPException(status_code=400, detail="The data.csv must be uploaded before checking the model")
 
-    if not os.path.exists('model.py'):
+    if not os.path.exists(submission_dir / 'model.py'):
         raise HTTPException(status_code=400, detail="The model.py file must be uploaded before checking the model") 
 
-    if not os.path.exists('checkpoint'):
+    if not os.path.exists(submission_dir / 'checkpoint'):
         raise HTTPException(status_code=400, detail="The checkpoint file must be uploaded before checking the model") 
         
-    data = pd.read_csv('data.csv')
+    data = pd.read_csv(submission_dir / 'data.csv')
     features_columns = [column for column in data.columns if column[:8] == "feature_"]
     target_columns = [column for column in data.columns if column[:7] == "target_"]
     datasets = [
         giskard.Dataset(data, target = target_columns[i]) for i in range(len(target_columns))
     ]
-
+    os.chdir(submission_dir)
     import model
     importlib.reload(model)
     from model import Model
@@ -172,5 +196,7 @@ async def check_model():
         </body>
     </html>
     """
+    
+    os.chdir("../..")  # Return to original directory
 
     return HTMLResponse(content=combined_html)

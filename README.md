@@ -28,11 +28,11 @@ To upload the data, run:
 
 ```bash
 curl -X 'POST' \
-  'http://localhost:8000/upload/data' \
+  'http://localhost:8000/upload/data?sumbmission_id=test' \
   -H 'accept: application/json' \
   -F 'file=@data.csv'
 ```
-
+where sumbmission_id is reqiured to support different datasets and models. 
 ---
 
 ## Model Upload
@@ -46,12 +46,11 @@ Upload the model and checkpoint using:
 
 ```bash
 curl -X 'POST' \
-  'http://localhost:8000/upload/model' \
+  'http://localhost:8000/upload/model?sumbmission_id=test' \
   -H 'accept: application/json' \
   -F 'model_file=@model.py' \
   -F 'checkpoint_file=@checkpoint'
 ```
-
 ---
 
 ## Running the Checks
@@ -59,10 +58,10 @@ curl -X 'POST' \
 Once both data and model are uploaded, generate the reports using the following endpoints:
 
 * **Model checks**:
-  `http://localhost:8000/check_model`
+  `http://localhost:8000/check_model?sumbmission_id=test`
 
 * **Data checks**:
-  `http://localhost:8000/check_data`
+  `http://localhost:8000/check_data?sumbmission_id=test`
 
 Each endpoint returns a report evaluating robustness, reliability, and compliance-relevant properties.
 
