@@ -22,6 +22,15 @@ SUBMISSIONS_ROOT.mkdir(exist_ok=True)
 async def root():
     return {"message": "Service is running. Use /upload to send files."}
 
+@app.get("/submissions")
+async def list_submissions():
+    """
+    Returns a list of all existing submission IDs (folder names).
+    """
+    if not SUBMISSIONS_ROOT.exists():
+        return []
+    # List only directories within the submissions root
+    return [d.name for d in SUBMISSIONS_ROOT.iterdir() if d.is_dir()]
 
 @app.post("/upload/model")
 async def upload_model(
@@ -38,8 +47,16 @@ async def upload_model(
     if model_file.filename != "model.py":
         raise HTTPException(status_code=400, detail="File must be named model.py")
 
-    if not model_file.content_type in {"text/plain", "application/octet-stream"}:
-        raise HTTPException(status_code=400, detail="Invalid file type")
+    valid_types = {
+        "text/plain", 
+        "application/octet-stream", 
+        "text/x-python", 
+        "text/x-script.python",
+        "application/x-python-code"
+    }
+    
+    #№if model_file.content_type not in valid_types:
+    #    raise HTTPException(status_code=400, detail=f"Invalid file type: {model_file.content_type}")
 
     contents = await model_file.read()
 
@@ -198,5 +215,4 @@ async def check_model(
     """
     
     os.chdir("../..")  # Return to original directory
-
     return HTMLResponse(content=combined_html)

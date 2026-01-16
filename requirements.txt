@@ -5,3 +5,4 @@ pandas
 ydata-profiling
 giskard
 scikit-learn
+streamlit
