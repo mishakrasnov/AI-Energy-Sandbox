@@ -157,6 +157,10 @@ async def upload_model(
     checkpoint_contents = await checkpoint_file.read()
     checkpoint_path = submission_dir / "checkpoint"
     checkpoint_path.write_bytes(checkpoint_contents)
+    
+    if os.path.exists(submission_dir / 'model_report.html'):
+        os.remove(submission_dir / 'model_report.html')
+        
 
     return {
         "status": "uploaded"
@@ -196,6 +200,12 @@ async def upload_data(
             os.remove(dst_path)
             raise HTTPException(status_code=400, detail="All columns must begin with feature_ or target_")
             
+    if os.path.exists(submission_dir / 'model_report.html'):
+        os.remove(submission_dir / 'model_report.html')
+    
+    if os.path.exists(submission_dir / 'data_report.html'):
+        os.remove(submission_dir / 'data_report.html')
+        
     return {
         "status": "uploaded"
     }
@@ -208,15 +218,22 @@ async def check_data(
     Calculates data profiling report using ydata-profiling library. Report includes:
     missing values, distributions, correlations, etc.
     """
+    
     submission_dir = SUBMISSIONS_ROOT / submission_id
     if not submission_dir.exists():
         raise HTTPException(status_code=400, detail="Submission ID not found")
+    
+    if os.path.exists(submission_dir / 'data_report.html'):
+        return HTMLResponse(content = (submission_dir / 'data_report.html').read_text())
 
     if not os.path.exists(submission_dir / 'data.csv'):
         raise HTTPException(status_code=400, detail="The data.csv must be uploaded before checking the data")
 
     data = pd.read_csv(submission_dir / 'data.csv')
     profile = ProfileReport(data, title="Data Profiling Report")
+    
+    with (submission_dir / 'data_report.html').open('w') as f:
+        f.write(profile.to_html())
 
     return HTMLResponse(content = profile.to_html())
 
@@ -245,6 +262,9 @@ async def check_model(
     submission_dir = SUBMISSIONS_ROOT / submission_id
     if not submission_dir.exists():
         raise HTTPException(status_code=400, detail="Submission ID not found")
+    
+    if os.path.exists(submission_dir / 'model_report.html'):
+        return HTMLResponse(content = (submission_dir / 'model_report.html').read_text())
     
     if not os.path.exists(submission_dir / 'data.csv'):
         raise HTTPException(status_code=400, detail="The data.csv must be uploaded before checking the model")
@@ -297,6 +317,9 @@ async def check_model(
         </body>
     </html>
     """
+    
+    with open('model_report.html', 'w') as f:
+        f.write(combined_html)
     
     os.chdir("../..")  # Return to original directory
     return HTMLResponse(content=combined_html)
