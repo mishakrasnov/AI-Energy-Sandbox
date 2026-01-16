@@ -170,6 +170,7 @@ async def upload_model(
 async def upload_data(
     submission_id: str = Query(...),
     file: UploadFile | None = File(None),
+    targets: List[str] = Query(...) # Receive selected targets from UI
 ):
     """
     Args:
@@ -194,11 +195,16 @@ async def upload_data(
     dst_path.write_bytes(contents)
 
     dataframe = pd.read_csv(dst_path)
-
-    for column in dataframe.columns:
-        if column[:8] != 'feature_' and column[:7] != 'target_':
-            os.remove(dst_path)
-            raise HTTPException(status_code=400, detail="All columns must begin with feature_ or target_")
+    
+    new_columns = {}
+    for col in dataframe.columns:
+        if col in targets:
+            new_columns[col] = f"target_{col}"
+        else:
+            new_columns[col] = f"feature_{col}"
+    
+    dataframe.rename(columns=new_columns, inplace=True)
+    dataframe.to_csv(dst_path, index=False)
             
     if os.path.exists(submission_dir / 'model_report.html'):
         os.remove(submission_dir / 'model_report.html')

@@ -70,15 +70,38 @@ with tab1:
         st.subheader("Dataset")
         data_file = st.file_uploader("Upload data.csv", type=["csv"])
         
-        if st.button("Submit Data"):
-            if data_file and submission_id:
-                files = {"file": (data_file.name, data_file.getvalue())}
-                params = {"submission_id": submission_id}
-                res = requests.post(f"{API_URL}/upload/data", params=params, files=files)
-                if res.status_code == 200:
-                    st.success("Data uploaded successfully!")
+        if data_file:
+            # Load preview to let user select targets
+            df_preview = pd.read_csv(data_file)
+            st.write("### Preview & Configure")
+            st.dataframe(df_preview.head(3))
+            
+            all_cols = df_preview.columns.tolist()
+            selected_targets = st.multiselect(
+                "Select Target Column(s)", 
+                options=all_cols,
+                help="Any columns NOT selected here will be treated as features."
+            )
+            
+            if st.button("Confirm & Submit Data"):
+                if not selected_targets:
+                    st.error("Please select at least one target column.")
                 else:
-                    st.error(f"Upload failed: {res.json().get('detail')}")
+                    # Reset file pointer to beginning for upload
+                    data_file.seek(0)
+                    
+                    files = {"file": (data_file.name, data_file.getvalue())}
+                    # Pass targets as multiple query parameters
+                    params = [
+                        ("submission_id", submission_id)
+                    ] + [("targets", t) for t in selected_targets]
+                    
+                    res = requests.post(f"{API_URL}/upload/data", params=params, files=files)
+                    
+                    if res.status_code == 200:
+                        st.success(f"Data uploaded! Features: {len(all_cols)-len(selected_targets)}, Targets: {len(selected_targets)}")
+                    else:
+                        st.error(f"Upload failed: {res.json().get('detail')}")
 
 # --- TAB 2: DATA PROFILING ---
 with tab2:
