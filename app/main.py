@@ -18,6 +18,88 @@ MAX_FILE_SIZE = 100_000  # 100 KB (reasonable for model.py)
 SUBMISSIONS_ROOT = Path("submissions")
 SUBMISSIONS_ROOT.mkdir(exist_ok=True)
 
+ISSUA_AI_ACT_MAPPING = {
+    "Robustness": "Article 15",
+    "Performance": "Articles 10 & 15",
+    "Spurious": "Article 9",
+    "Data Leakage": "Article 10",
+    "Stochasticity": "Article 15",
+    "Loss": "Articles 9 & 15"
+}
+
+def generate_gskard_report(target_name, scan_result):
+    issues = scan_result.issues
+    total_issues = len(issues)
+    
+    header_status = '<span style="color: #e74c3c; font-weight: bold;">ISSUES DETECTED</span>' if total_issues > 0 else '<span style="color: #27ae60; font-weight: bold;">PASSED</span>'
+    
+    issue_cards = ""
+    for issue in issues:
+        sev = issue.level.upper()
+        bg_color = "#ff4b4b" if sev == "MAJOR" else "#ffa500"
+        group_name = issue.group.name if hasattr(issue.group, 'name') else str(issue.group)
+        group_name = group_name + f" (EU AI Act {ISSUA_AI_ACT_MAPPING[group_name]})"
+        description = issue.description
+
+        # --- Handle Data Examples ---
+        examples_html = ""
+        if hasattr(issue, 'examples') and issue.examples() is not None:
+            examples_df = issue.examples().head(5)  # Show top 5 examples
+            if not examples_df.empty:
+                # Convert DataFrame to a styled HTML table
+                table_style = "width:100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85em; background: #fff;"
+                header_style = "background: #f1f1f1; border-bottom: 2px solid #ddd; padding: 8px; text-align: left;"
+                cell_style = "border-bottom: 1px solid #eee; padding: 8px;"
+                
+                examples_html = f"""
+                <div style="margin-top: 20px;">
+                    <strong style="color: #2c3e50;">Specific Failure Examples:</strong>
+                    <div style="overflow-x: auto; margin-top: 10px; border: 1px solid #eee; border-radius: 4px;">
+                        {examples_df.to_html(index=False, classes='example-table').replace(
+                            '<table border="1" class="dataframe example-table">', 
+                            f'<table style="{table_style}">'
+                        ).replace('<th>', f'<th style="{header_style}">').replace('<td>', f'<td style="{cell_style}">')}
+                    </div>
+                </div>
+                """
+
+        issue_cards += f"""
+        <div style="background: white; border-radius: 12px; padding: 25px; margin-bottom: 20px; 
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 5px solid {bg_color};">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #2c3e50;">{group_name}</h3>
+                <span style="background: {bg_color}; color: white; padding: 4px 12px; border-radius: 6px; font-size: 0.75em; font-weight: 800;">
+                    {sev}
+                </span>
+            </div>
+            
+            <div style="color: #34495e; line-height: 1.6;">
+                {description}
+            </div>
+
+            {examples_html}
+            
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; color: #7f8c8d; font-size: 0.85em;">
+                <em>Total of {len(issue.examples()) if hasattr(issue, 'examples') else 0} examples identified for this issue.</em>
+            </div>
+        </div>
+        """
+
+    return f"""
+    <div style="max-width: 900px; margin: 40px auto; font-family: system-ui, -apple-system, sans-serif;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <h1 style="color: #2c3e50;">Target: <span style="color: #3498db;">{target_name}</span></h1>
+            <div style="text-align: right;">
+                <div style="font-size: 1.4em;">{header_status}</div>
+                <div style="color: #95a5a6;">{total_issues} issues identified</div>
+            </div>
+        </div>
+        <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0 30px 0;">
+        {issue_cards}
+    </div>
+    """
+
 @app.get("/")
 async def root():
     return {"message": "Service is running. Use /upload to send files."}
@@ -192,11 +274,13 @@ async def check_model(
         model_type="regression",
         feature_names=features_columns) for i in range(len(target_columns))
     ]
+    
+    results = []
+    for target, giskard_model, dataset in zip(target_columns, giskard_models, datasets):
+        scan_result = giskard.scan(giskard_model, dataset)
+        custom_html = generate_gskard_report(target, scan_result)
+        results.append(custom_html)
 
-    results = [
-        f"<h2>Scan Report for: {target}</h2>" + giskard.scan(giskard_model, dataset).to_html()
-        for target, giskard_model, dataset in zip(target_columns, giskard_models, datasets)
-    ]
     combined_html = f"""
     <html>
         <head>

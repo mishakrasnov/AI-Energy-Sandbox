@@ -11,9 +11,6 @@ st.set_page_config(page_title="ML Submission Portal", layout="wide")
 st.title("🛡️ Model & Data Quality Dashboard")
 st.markdown("Upload your model artifacts and data to trigger automated quality checks.")
 
-
-
-
 # --- Sidebar: Identity & Selection ---
 with st.sidebar:
     st.header("Submission Management")
