@@ -4,79 +4,36 @@ This repository provides an implementation of a robustness and reliability check
 
 ---
 
-## Deployment
-
-To deploy the service, build and run the Docker container:
-
+# Deployment 
+To deploy the servie - run the following command; it will be avalible at `http://0.0.0.0:8501`
 ```bash
-docker build -t fast-report-app .
-docker run -p 8000:8000 fast-report-app
+docker-compose up --build
 ```
 
-The service will be available at `http://localhost:8000`.
+---
+
+# Using the Dashboard
+The Dashboard is orginized by chosing existing submission_id or typying a new one. For now, only xgboost and torch models are avaliable. On the main tab, there is a box to submit checkpoint of a model (xgboost or torch). Examples of model savings for these two types can be found in example_xgboost and example_torch folders. To submit data, choice your dataframe saved on csv file and select target columns. 
 
 ---
 
-## Data Upload
-
-The input data file *must be named `data.csv` and may contain only two types of columns:
-
-* Columns starting with `feature_` – input features used by the prediction model
-* Columns starting with `target_` – retrospective ground-truth target values
-
-To upload the data, run:
-
-```bash
-curl -X 'POST' \
-  'http://localhost:8000/upload/data?sumbmission_id=test' \
-  -H 'accept: application/json' \
-  -F 'file=@data.csv'
-```
-where sumbmission_id is reqiured to support different datasets and models. 
+# How to run checks for model and data
+Switch to correspinding tabs and push the button to generate report. 
 
 ---
 
-## Model Upload
-
-The model must be provided as:
-
-* `model.py` – a Python file containing the model class definition
-* `checkpoint` – a file containing the pretrained model weights
-
-Upload the model and checkpoint using:
-
-```bash
-curl -X 'POST' \
-  'http://localhost:8000/upload/model?sumbmission_id=test' \
-  -H 'accept: application/json' \
-  -F 'model_file=@model.py' \
-  -F 'checkpoint_file=@checkpoint'
-```
----
-
-## Running the Checks
-
-Once both data and model are uploaded, generate the reports using the following endpoints:
-
-* **Model checks**:
-  `http://localhost:8000/check_model?sumbmission_id=test`
-
-* **Data checks**:
-  `http://localhost:8000/check_data?sumbmission_id=test`
-
-Each endpoint returns a report evaluating robustness, reliability, and compliance-relevant properties.
-
----
-
-## Demonstration Data
+# Demonstration Data
 
 The repository includes example files demonstrating the full workflow. The sample dataset corresponds to gas consumption forecasting for a single household, based on data from:
 
 > [https://www.nature.com/articles/s41597-021-00921-y](https://www.nature.com/articles/s41597-021-00921-y)
 
-This example illustrates how the system can be used to assess energy forecasting models under regulatory-oriented robustness and reliability criteria.
+This example illustrates how the system can be used to assess energy forecasting models under regulatory-oriented robustness and reliability criteria. The data is presented as `data.csv` and checkpoints for models are stored in example_xgboost and example_torch folders. 
 
-## Custom tests
+---
+
+
+# Custom tests (for developers)
 For some applications, special tests might be required like evaluating peformance during peak hours or under extreme temperatures. Custom tests are added to `app/main.py` using the following template: 
 
 ```python
