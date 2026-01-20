@@ -45,26 +45,44 @@ tab1, tab2, tab3 = st.tabs(["📤 Upload Files", "📊 Data Profiling", "🔍 Mo
 # --- TAB 1: UPLOAD ---
 with tab1:
     st.header("Upload Artifacts")
-    
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Model Files")
-        model_file = st.file_uploader("Upload model.py", type=["py"])
-        checkpoint_file = st.file_uploader("Upload checkpoint", type=None)
+        st.subheader("Model Configuration")
+        
+        # 1. Select Model Type
+        model_type = st.selectbox(
+            "Select Model Library",
+            options=["XGBoost", "PyTorch"],
+            help="Select the framework used to train the model."
+        )
+
+        # 2. Upload Checkpoint Only
+        st.info(f"Please upload your saved **{model_type}** file (e.g., .json, or .pth)")
+        checkpoint_file = st.file_uploader("Upload Model Checkpoint", type=["json", "pth"])
         
         if st.button("Submit Model"):
-            if model_file and checkpoint_file and submission_id:
-                files = {
-                    "model_file": (model_file.name, model_file.getvalue()),
-                    "checkpoint_file": (checkpoint_file.name, checkpoint_file.getvalue())
+            if checkpoint_file and submission_id:
+                # Prepare the file for the multipart request
+                files = {"checkpoint_file": (checkpoint_file.name, checkpoint_file.getvalue())}
+                
+                # Send the model type as a parameter so the backend knows how to load it
+                params = {
+                    "submission_id": submission_id,
+                    "model_type": model_type.lower()
                 }
-                params = {"submission_id": submission_id}
-                res = requests.post(f"{API_URL}/upload/model", params=params, files=files)
-                if res.status_code == 200:
-                    st.success("Model uploaded successfully!")
-                else:
-                    st.error(f"Upload failed: {res.json().get('detail')}")
+                
+                with st.spinner("Uploading model..."):
+                    try:
+                        res = requests.post(f"{API_URL}/upload/model", params=params, files=files)
+                        if res.status_code == 200:
+                            st.success(f"✅ {model_type} model uploaded successfully!")
+                        else:
+                            st.error(f"❌ Upload failed: {res.json().get('detail')}")
+                    except Exception as e:
+                        st.error(f"Connection Error: {e}")
+            else:
+                st.warning("Please select a file before submitting.")
 
     with col2:
         st.subheader("Dataset")

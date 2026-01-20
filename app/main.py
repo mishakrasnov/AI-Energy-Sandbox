@@ -4,12 +4,16 @@ import importlib.util
 import sys
 from pathlib import Path
 from fastapi import Query
-from ydata_profiling import ProfileReport 
+from ydata_profiling import ProfileReport
 from fastapi.responses import HTMLResponse
 import os
 import pandas as pd
 import giskard
 import importlib
+
+from app import model_xgb
+from app import model_torch
+
 app = FastAPI()
 
 MAX_DATASET_SIZE = 100 * 1024 * 1024  # 100 MB
@@ -117,7 +121,7 @@ async def list_submissions():
 @app.post("/upload/model")
 async def upload_model(
     submission_id: str = Query(...),
-    model_file: UploadFile = File(...), 
+    model_type: str = Query(...),
     checkpoint_file: UploadFile = File(...)):
     """
     Args:
@@ -126,36 +130,20 @@ async def upload_model(
     Returns:
        html response with scan reports for each target column. 
     """
-    if model_file.filename != "model.py":
-        raise HTTPException(status_code=400, detail="File must be named model.py")
-
-    valid_types = {
-        "text/plain", 
-        "application/octet-stream", 
-        "text/x-python", 
-        "text/x-script.python",
-        "application/x-python-code"
-    }
-    
-    #№if model_file.content_type not in valid_types:
-    #    raise HTTPException(status_code=400, detail=f"Invalid file type: {model_file.content_type}")
-
-    contents = await model_file.read()
-
-    if len(contents) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="model.py too large")
-    
+   
     submission_dir = SUBMISSIONS_ROOT / submission_id
     submission_dir.mkdir(exist_ok=True)
-
-    model_path = submission_dir / "model.py"
-    model_path.write_bytes(contents)
     
-    if checkpoint_file.filename != "checkpoint":
-        raise HTTPException(status_code=400, detail="File must be named checkpoint")
+    #if not checkpoint_file.cont in ['json','pt']:
+    #    raise HTTPException(status_code=400, detail="File must be of type .json or .pt")
+    
+    # all files contanintg checkpoint name are deleted:
+    for file in submission_dir.iterdir():
+        if file.name.startswith("checkpoint_"):
+            os.remove(file)
     
     checkpoint_contents = await checkpoint_file.read()
-    checkpoint_path = submission_dir / "checkpoint"
+    checkpoint_path = submission_dir / f"checkpoint_{model_type}"
     checkpoint_path.write_bytes(checkpoint_contents)
     
     if os.path.exists(submission_dir / 'model_report.html'):
@@ -274,11 +262,13 @@ async def check_model(
     
     if not os.path.exists(submission_dir / 'data.csv'):
         raise HTTPException(status_code=400, detail="The data.csv must be uploaded before checking the model")
-
-    if not os.path.exists(submission_dir / 'model.py'):
-        raise HTTPException(status_code=400, detail="The model.py file must be uploaded before checking the model") 
-
-    if not os.path.exists(submission_dir / 'checkpoint'):
+    
+    checkpoint_path = None
+    for types in ['xgboost','pytorch']:
+        if os.path.exists(submission_dir / f'checkpoint_{types}'):
+            checkpoint_path = submission_dir / f'checkpoint_{types}'
+            break
+    if checkpoint_path is None:
         raise HTTPException(status_code=400, detail="The checkpoint file must be uploaded before checking the model") 
         
     data = pd.read_csv(submission_dir / 'data.csv')
@@ -287,16 +277,16 @@ async def check_model(
     datasets = [
         giskard.Dataset(data, target = target_columns[i]) for i in range(len(target_columns))
     ]
-    os.chdir(submission_dir)
-    import model
-    importlib.reload(model)
-    from model import Model
-    model_cur = Model("checkpoint")
-    model_cur.load_checkpoint()
+    if 'pytorch' in str(checkpoint_path):
+        model = model_torch.Model(str(checkpoint_path))
+    if 'xgboost' in str(checkpoint_path):
+        model = model_xgb.Model(str(checkpoint_path))
+        
+    model.load_checkpoint()
 
     giskard_models = [
         giskard.Model(
-        model=lambda x: model_cur.predict(x, i),
+        model=lambda x: model.predict(x, i),
         model_type="regression",
         feature_names=features_columns) for i in range(len(target_columns))
     ]
@@ -324,8 +314,7 @@ async def check_model(
     </html>
     """
     
-    with open('model_report.html', 'w') as f:
+    with open(submission_dir / 'model_report.html', 'w') as f:
         f.write(combined_html)
-    
-    os.chdir("../..")  # Return to original directory
+        
     return HTMLResponse(content=combined_html)
