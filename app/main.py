@@ -222,8 +222,15 @@ async def check_data(
 
     if not os.path.exists(submission_dir / 'data.csv'):
         raise HTTPException(status_code=400, detail="The data.csv must be uploaded before checking the data")
-
+    
     data = pd.read_csv(submission_dir / 'data.csv')
+    
+    features_columns = [column[8:] for column in data.columns if column[:8] == "feature_"]
+    target_columns = [column[7:] for column in data.columns if column[:7] == "target_"]
+    
+    data  = data.rename(columns={f"feature_{col}": col for col in features_columns})
+    data  = data.rename(columns={f"target_{col}": col for col in target_columns})
+    
     profile = ProfileReport(data, title="Data Profiling Report")
     
     with (submission_dir / 'data_report.html').open('w') as f:
@@ -272,8 +279,15 @@ async def check_model(
         raise HTTPException(status_code=400, detail="The checkpoint file must be uploaded before checking the model") 
         
     data = pd.read_csv(submission_dir / 'data.csv')
-    features_columns = [column for column in data.columns if column[:8] == "feature_"]
-    target_columns = [column for column in data.columns if column[:7] == "target_"]
+    
+    print(data.columns)
+    
+    features_columns = [column[8:] for column in data.columns if column[:8] == "feature_"]
+    target_columns = [column[7:] for column in data.columns if column[:7] == "target_"]
+    
+    data  = data.rename(columns={f"feature_{col}": col for col in features_columns})
+    data  = data.rename(columns={f"target_{col}": col for col in target_columns})
+    
     datasets = [
         giskard.Dataset(data, target = target_columns[i]) for i in range(len(target_columns))
     ]

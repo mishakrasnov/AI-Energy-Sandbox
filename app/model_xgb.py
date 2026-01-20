@@ -19,5 +19,4 @@ class Model:
         of shape (len(df),).
         """
         # remove the feature_ from the beginign of the columns names
-        df.columns = [col[8:] for col in df.columns]
         return self.model.predict(xgb.DMatrix(df)).reshape(len(df), -1)[:, target_index]
