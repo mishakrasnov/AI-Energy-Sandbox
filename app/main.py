@@ -23,11 +23,11 @@ SUBMISSIONS_ROOT = Path("submissions")
 SUBMISSIONS_ROOT.mkdir(exist_ok=True)
 
 ISSUA_AI_ACT_MAPPING = {
-    "Robustness": "Article 15",
-    "Performance": "Articles 10 & 15",
-    "Spurious Correlation": "Article 9",
-    "Data Leakage": "Article 10",
-    "Stochasticity": "Article 15"
+    "Robustness": "Article 15 & 9",
+    "Performance": "Articles 10 & 15 & 9",
+    "Spurious Correlation": "Article 9 & 10",
+    "Data Leakage": "Article 9 & 10",
+    "Stochasticity": "Article 15 & 9"
 }
 
 def generate_gskard_report(target_name, scan_result):
