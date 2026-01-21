@@ -25,10 +25,9 @@ SUBMISSIONS_ROOT.mkdir(exist_ok=True)
 ISSUA_AI_ACT_MAPPING = {
     "Robustness": "Article 15",
     "Performance": "Articles 10 & 15",
-    "Spurious": "Article 9",
+    "Spurious Correlation": "Article 9",
     "Data Leakage": "Article 10",
-    "Stochasticity": "Article 15",
-    "Loss": "Articles 9 & 15"
+    "Stochasticity": "Article 15"
 }
 
 def generate_gskard_report(target_name, scan_result):
@@ -256,9 +255,7 @@ async def check_model(
         4. Data leakage https://github.com/Giskard-AI/giskard-oss/blob/main/giskard/scanner/data_leakage/data_leakage_detector.py
             - EU AI Act Article 10
         5. Stochasticity https://github.com/Giskard-AI/giskard-oss/blob/main/giskard/scanner/stochasticity/stochasticity_detector.py
-            - EU AI Act Article 15 
-        6. Loss based https://github.com/Giskard-AI/giskard-oss/blob/main/giskard/scanner/common/loss_based_detector.py 
-            - EU AI Act Articles 9 & 15
+            - EU AI Act Article 15
     """
     submission_dir = SUBMISSIONS_ROOT / submission_id
     if not submission_dir.exists():
