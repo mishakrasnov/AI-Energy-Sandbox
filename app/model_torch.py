@@ -17,6 +17,6 @@ class Model:
         Makes prediction based on the dataframe df with input features. Returns predictions for speicific target_index
         of shape (len(df),).
         """
-        data = torch.tensor(df.values, dtype=torch.float32)
+        data = torch.tensor(df.fillna(0).values, dtype=torch.float32)
         preds = self.model(data).reshape(len(df), -1).detach().numpy()
         return preds[:, target_index]
