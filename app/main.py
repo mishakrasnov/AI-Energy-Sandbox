@@ -11,8 +11,12 @@ import pandas as pd
 import giskard
 import importlib
 
+from giskard import Suite, testing
+
 from app import model_xgb
 from app import model_torch
+from app import model_ieeebus39
+from app import ieee_bus_tests
 
 app = FastAPI()
 
@@ -27,11 +31,14 @@ ISSUA_AI_ACT_MAPPING = {
     "Performance": "Articles 10 & 15 & 9",
     "Spurious Correlation": "Article 9 & 10",
     "Data Leakage": "Article 9 & 10",
-    "Stochasticity": "Article 15 & 9"
+    "Stochasticity": "Article 15 & 9",
+    'Non convergence': 'Article 15 & 9',
+    'Line overload': 'Article 15 & 9 & 10',
+    'Transformer overload': 'Article 15 & 9 & 10',
+    'Volatge Violations': 'Article 15 & 9 & 10'
 }
 
-def generate_gskard_report(target_name, scan_result):
-    issues = scan_result.issues
+def generate_gskard_report(target_name, issues):
     total_issues = len(issues)
     
     header_status = '<span style="color: #e74c3c; font-weight: bold;">ISSUES DETECTED</span>' if total_issues > 0 else '<span style="color: #27ae60; font-weight: bold;">PASSED</span>'
@@ -166,8 +173,8 @@ async def upload_data(
         html response with data profiling report.
     """
 
-    if file.filename != "data.csv":
-        raise HTTPException(status_code=400, detail="File must be named data.csv")
+    #if file.filename != "data.csv":
+    #    raise HTTPException(status_code=400, detail="File must be named data.csv")
 
     contents = await file.read()
     
@@ -178,7 +185,7 @@ async def upload_data(
     submission_dir.mkdir(exist_ok=True)
     
     dst_dir = submission_dir
-    dst_path = dst_dir / file.filename
+    dst_path = dst_dir / 'data.csv'
     dst_path.write_bytes(contents)
 
     dataframe = pd.read_csv(dst_path)
@@ -268,16 +275,14 @@ async def check_model(
         raise HTTPException(status_code=400, detail="The data.csv must be uploaded before checking the model")
     
     checkpoint_path = None
-    for types in ['xgboost','pytorch']:
-        if os.path.exists(submission_dir / f'checkpoint_{types}'):
-            checkpoint_path = submission_dir / f'checkpoint_{types}'
+    for type in ['xgboost','pytorch', 'ieeebus39']:
+        if os.path.exists(submission_dir / f'checkpoint_{type}'):
+            checkpoint_path = submission_dir / f'checkpoint_{type}'
             break
     if checkpoint_path is None:
         raise HTTPException(status_code=400, detail="The checkpoint file must be uploaded before checking the model") 
         
     data = pd.read_csv(submission_dir / 'data.csv')
-    
-    print(data.columns)
     
     features_columns = [column[8:] for column in data.columns if column[:8] == "feature_"]
     target_columns = [column[7:] for column in data.columns if column[:7] == "target_"]
@@ -285,15 +290,48 @@ async def check_model(
     data  = data.rename(columns={f"feature_{col}": col for col in features_columns})
     data  = data.rename(columns={f"target_{col}": col for col in target_columns})
     
+    if len(features_columns) == 0:
+        features_columns = [coloumn + '_dummy_feature' for coloumn in target_columns]
+        data[features_columns] = data[target_columns]
+    
     datasets = [
         giskard.Dataset(data, target = target_columns[i]) for i in range(len(target_columns))
     ]
+    
+    
+    
     if 'pytorch' in str(checkpoint_path):
+        type = 'pytorch'
         model = model_torch.Model(str(checkpoint_path))
     if 'xgboost' in str(checkpoint_path):
+        type = 'pytorch'
         model = model_xgb.Model(str(checkpoint_path))
+    if 'ieeebus39' in str(checkpoint_path):
+        type = 'ieeebus39'
+        model = model_ieeebus39.Model(str(checkpoint_path))
         
     model.load_checkpoint()
+
+    
+    if type == 'ieeebus39':
+        
+        giskard_model=  giskard.Model(
+            model=lambda x: model.predict(x),
+            model_type="regression",
+            feature_names=features_columns,
+            test_modules=[ieee_bus_tests])
+        
+        dataset = giskard.Dataset(data[target_columns])
+                                                                  
+        
+        results = ieee_bus_tests.test_ieeebus(giskard_model, dataset, model, data[target_columns])
+        
+        print(results)
+        
+        custom_html = generate_gskard_report("IEEE Bus 39 Model", results)
+        
+        return HTMLResponse(content=custom_html)
+        
 
     giskard_models = [
         giskard.Model(
@@ -305,7 +343,7 @@ async def check_model(
     results = []
     for target, giskard_model, dataset in zip(target_columns, giskard_models, datasets):
         scan_result = giskard.scan(giskard_model, dataset)
-        custom_html = generate_gskard_report(target, scan_result)
+        custom_html = generate_gskard_report(target, scan_result.issues)
         results.append(custom_html)
 
     combined_html = f"""

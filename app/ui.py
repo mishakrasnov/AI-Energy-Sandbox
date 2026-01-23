@@ -53,7 +53,7 @@ with tab1:
         # 1. Select Model Type
         model_type = st.selectbox(
             "Select Model Library",
-            options=["XGBoost", "PyTorch"],
+            options=["XGBoost", "PyTorch", "IEEEBUS39"],
             help="Select the framework used to train the model."
         )
 
@@ -104,22 +104,22 @@ with tab1:
             if st.button("Confirm & Submit Data"):
                 if not selected_targets:
                     st.error("Please select at least one target column.")
+                
+                # Reset file pointer to beginning for upload
+                data_file.seek(0)
+                
+                files = {"file": (data_file.name, data_file.getvalue())}
+                # Pass targets as multiple query parameters
+                params = [
+                    ("submission_id", submission_id)
+                ] + [("targets", t) for t in selected_targets]
+                
+                res = requests.post(f"{API_URL}/upload/data", params=params, files=files)
+                
+                if res.status_code == 200:
+                    st.success(f"Data uploaded! Features: {len(all_cols)-len(selected_targets)}, Targets: {len(selected_targets)}")
                 else:
-                    # Reset file pointer to beginning for upload
-                    data_file.seek(0)
-                    
-                    files = {"file": (data_file.name, data_file.getvalue())}
-                    # Pass targets as multiple query parameters
-                    params = [
-                        ("submission_id", submission_id)
-                    ] + [("targets", t) for t in selected_targets]
-                    
-                    res = requests.post(f"{API_URL}/upload/data", params=params, files=files)
-                    
-                    if res.status_code == 200:
-                        st.success(f"Data uploaded! Features: {len(all_cols)-len(selected_targets)}, Targets: {len(selected_targets)}")
-                    else:
-                        st.error(f"Upload failed: {res.json().get('detail')}")
+                    st.error(f"Upload failed: {res.json().get('detail')}")
 
 # --- TAB 2: DATA PROFILING ---
 with tab2:
