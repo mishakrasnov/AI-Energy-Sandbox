@@ -54,35 +54,54 @@ with tab1:
         model_type = st.selectbox(
             "Select Model Library",
             options=["XGBoost", "PyTorch", "IEEEBUS39"],
-            help="Select the framework used to train the model."
+            help="Select the framework. IEEEBUS39 uses a physics-based simulation."
         )
 
-        # 2. Upload Checkpoint Only
-        st.info(f"Please upload your saved **{model_type}** file (e.g., .json, or .pth)")
-        checkpoint_file = st.file_uploader("Upload Model Checkpoint", type=["json", "pth"])
-        
-        if st.button("Submit Model"):
-            if checkpoint_file and submission_id:
-                # Prepare the file for the multipart request
-                files = {"checkpoint_file": (checkpoint_file.name, checkpoint_file.getvalue())}
+        # 2. Conditional UI based on Model Selection
+        if model_type == "IEEEBUS39":
+            st.info("💡 Physical Simulation Mode: Configure grid constraints below.")
+            with st.form("ieee_params"):
+                i_max_ka = st.number_input("Max Line Current (i_max_ka)", value=1.2, step=0.1)
+                vmin = st.number_input("Min Voltage (v_min_pu)",value=0.95, step=0.1)
+                vmax = st.number_input("Max Voltage (v_max_pu)",value=1.05, step=0.1)
                 
-                # Send the model type as a parameter so the backend knows how to load it
-                params = {
-                    "submission_id": submission_id,
-                    "model_type": model_type.lower()
-                }
+                submit_ieee = st.form_submit_button("Initialize IEEE 39-Bus Model")
                 
-                with st.spinner("Uploading model..."):
-                    try:
+                if submit_ieee:
+                    params = {
+                        "submission_id": submission_id,
+                        "model_type": "ieeebus39",
+                        "i_max_ka": i_max_ka,
+                        "vmin": vmin,
+                        "vmax": vmax
+                    }
+                    with st.spinner("Configuring physics engine..."):
+                        try:
+                            # Sending parameters as JSON/Query rather than a file
+                            res = requests.post(f"{API_URL}/upload/model", params=params)
+                            if res.status_code == 200:
+                                st.success("✅ IEEE 39-Bus Engine Initialized!")
+                            else:
+                                st.error(f"❌ Initialization failed: {res.json().get('detail')}")
+                        except Exception as e:
+                            st.error(f"Connection Error: {e}")
+
+        else:
+            # Standard File Upload for XGBoost/PyTorch
+            st.info(f"Please upload your saved **{model_type}** file.")
+            checkpoint_file = st.file_uploader("Upload Model Checkpoint", type=["json", "pth"])
+            
+            if st.button("Submit Model"):
+                if checkpoint_file and submission_id:
+                    files = {"checkpoint_file": (checkpoint_file.name, checkpoint_file.getvalue())}
+                    params = {"submission_id": submission_id, "model_type": model_type.lower()}
+                    
+                    with st.spinner("Uploading model..."):
                         res = requests.post(f"{API_URL}/upload/model", params=params, files=files)
                         if res.status_code == 200:
-                            st.success(f"✅ {model_type} model uploaded successfully!")
-                        else:
-                            st.error(f"❌ Upload failed: {res.json().get('detail')}")
-                    except Exception as e:
-                        st.error(f"Connection Error: {e}")
-            else:
-                st.warning("Please select a file before submitting.")
+                            st.success(f"✅ {model_type} model uploaded!")
+                else:
+                    st.warning("Please select a file.")
 
     with col2:
         st.subheader("Dataset")

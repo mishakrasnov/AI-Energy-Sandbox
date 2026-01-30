@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from typing import Optional
 from typing import List
 import importlib.util
 import sys
@@ -128,7 +129,10 @@ async def list_submissions():
 async def upload_model(
     submission_id: str = Query(...),
     model_type: str = Query(...),
-    checkpoint_file: UploadFile = File(...)):
+    checkpoint_file: Optional[UploadFile] = File(None),
+    i_max_ka: Optional[float] = Query(None),
+    vmin: Optional[float] = Query(None),
+    vmax: Optional[float] = Query(None)):
     """
     Args:
         model_file (UploadFile, optional): _description_. Defaults to File(...).
@@ -140,25 +144,37 @@ async def upload_model(
     submission_dir = SUBMISSIONS_ROOT / submission_id
     submission_dir.mkdir(exist_ok=True)
     
-    #if not checkpoint_file.cont in ['json','pt']:
-    #    raise HTTPException(status_code=400, detail="File must be of type .json or .pt")
-    
-    # all files contanintg checkpoint name are deleted:
     for file in submission_dir.iterdir():
         if file.name.startswith("checkpoint_"):
             os.remove(file)
-    
-    checkpoint_contents = await checkpoint_file.read()
-    checkpoint_path = submission_dir / f"checkpoint_{model_type}"
-    checkpoint_path.write_bytes(checkpoint_contents)
-    
+            
     if os.path.exists(submission_dir / 'model_report.html'):
         os.remove(submission_dir / 'model_report.html')
         
-
-    return {
-        "status": "uploaded"
-    }
+    if model_type.lower() == "ieeebus39":
+        # Save parameters to a config file instead of a binary checkpoint
+        import json
+        config = {
+            "model_type": "ieeebus39",
+            "i_max_ka": i_max_ka or 1.2,
+            "vmin": vmin or 0.95,
+            "vmax": vmax or 1.05
+        }
+        config_path = submission_dir / "checkpoint_ieeebus39"
+        with open(config_path, "w") as f:
+            json.dump(config, f)
+        
+        return {"status": "initialized", "config": config}
+    
+    else:
+        if not checkpoint_file:
+            raise HTTPException(status_code=400, detail="Checkpoint file required for ML models.")
+        
+        checkpoint_contents = await checkpoint_file.read()
+        checkpoint_path = submission_dir / f"checkpoint_{model_type.lower()}"
+        checkpoint_path.write_bytes(checkpoint_contents)
+        
+        return {"status": "uploaded", "filename": checkpoint_file.name}
     
 @app.post("/upload/data")
 async def upload_data(
@@ -298,8 +314,6 @@ async def check_model(
         giskard.Dataset(data, target = target_columns[i]) for i in range(len(target_columns))
     ]
     
-    
-    
     if 'pytorch' in str(checkpoint_path):
         type = 'pytorch'
         model = model_torch.Model(str(checkpoint_path))
@@ -321,8 +335,7 @@ async def check_model(
             feature_names=features_columns,
             test_modules=[ieee_bus_tests])
         
-        dataset = giskard.Dataset(data[target_columns])
-                                                                  
+        dataset = giskard.Dataset(data[target_columns])                                 
         
         results = ieee_bus_tests.test_ieeebus(giskard_model, dataset, model, data[target_columns])
         
