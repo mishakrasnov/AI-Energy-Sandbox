@@ -174,7 +174,7 @@ async def upload_model(
         checkpoint_path = submission_dir / f"checkpoint_{model_type.lower()}"
         checkpoint_path.write_bytes(checkpoint_contents)
         
-        return {"status": "uploaded", "filename": checkpoint_file.name}
+        return {"status": "uploaded"}
     
 @app.post("/upload/data")
 async def upload_data(
