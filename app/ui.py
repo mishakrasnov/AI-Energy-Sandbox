@@ -153,7 +153,7 @@ with tab3:
     # IEEE BUS 39 SIMULATION
     # ------------------------- 
     else:
-        st.info("⚡ Configure and run IEEE 39-Bus physical grid simulation.")
+        st.info("⚡ Configure IEEE 39-Bus physical grid simulation.")
         params = None
         with st.form("ieee_params"):
             i_max_ka = st.number_input("Max Line Current (i_max_ka)", value=1.2, step=0.1)

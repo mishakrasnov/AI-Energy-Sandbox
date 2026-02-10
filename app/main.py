@@ -22,25 +22,25 @@ from app import ieee_bus_tests
 
 app = FastAPI()
 
-MAX_DATASET_SIZE = 100 * 1024 * 1024  # 100 MB
-MAX_FILE_SIZE = 100_000  # 100 KB (reasonable for model.py)
-
 SUBMISSIONS_ROOT = Path("submissions")
 SUBMISSIONS_ROOT.mkdir(exist_ok=True)
 
 ISSUA_AI_ACT_MAPPING = {
     "Robustness": "Article 15 & 9",
     "Performance": "Articles 10 & 15 & 9",
-    "Spurious Correlation": "Article 9 & 10",
-    "Data Leakage": "Article 9 & 10",
-    "Stochasticity": "Article 15 & 9",
-    'Non convergence': 'Article 15 & 9',
-    'Line overload': 'Article 15 & 9 & 10',
-    'Transformer overload': 'Article 15 & 9 & 10',
-    'Volatge Violations': 'Article 15 & 9 & 10'
+    "Spurious Correlation": "Articles 9 & 10",
+    "Data Leakage": "Articles 9 & 10",
+    "Stochasticity": "Articles 15 & 9",
+    'Non convergence': 'Articles 15 & 9',
+    'Line overload': 'Articles 15 & 9 & 10',
+    'Transformer overload': 'Articles 15 & 9 & 10',
+    'Volatge Violations': 'Articles 15 & 9 & 10'
 }
 
 def generate_gskard_report(target_name, issues):
+    """
+    Generate a custom HTML report for Giskard scan results, including issue details and examples.
+    """
     total_issues = len(issues)
     
     header_status = '<span style="color: #e74c3c; font-weight: bold;">ISSUES DETECTED</span>' if total_issues > 0 else '<span style="color: #27ae60; font-weight: bold;">PASSED</span>'
@@ -133,6 +133,9 @@ async def upload_ieeebus39_config(
     i_max_ka: Optional[float] = Query(None),
     vmin: Optional[float] = Query(None),
     vmax: Optional[float] = Query(None)): 
+    """ 
+    Initializes the configuration for the IEEEBUS39 model.
+    """
     submission_dir = SUBMISSIONS_ROOT / submission_id
     
     config = {
@@ -144,6 +147,10 @@ async def upload_ieeebus39_config(
     config_path = submission_dir / "ieeebus39_config"
     with open(config_path, "w") as f:
         json.dump(config, f)
+        
+    # Remove any existing checkpoint files to ensure the testing will reload with the new config
+    if os.path.exists(submission_dir / 'model_report.html'):
+        os.remove(submission_dir / 'model_report.html')
     
     return {"status": "initialized", "config": config}
     
@@ -200,9 +207,6 @@ async def upload_data(
     #    raise HTTPException(status_code=400, detail="File must be named data.csv")
 
     contents = await file.read()
-    
-    if len(contents) > MAX_DATASET_SIZE: 
-        raise HTTPException(400, "File too large")
     
     submission_dir = SUBMISSIONS_ROOT / submission_id
     submission_dir.mkdir(exist_ok=True)
@@ -286,6 +290,7 @@ async def check_model(
             - EU AI Act Article 10
         5. Stochasticity https://github.com/Giskard-AI/giskard-oss/blob/main/giskard/scanner/stochasticity/stochasticity_detector.py
             - EU AI Act Article 15
+        and custom tests for the IEEEBUS39 model.
     """
     submission_dir = SUBMISSIONS_ROOT / submission_id
     if not submission_dir.exists():

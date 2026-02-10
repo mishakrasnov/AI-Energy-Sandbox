@@ -47,6 +47,9 @@ Voltage_viol = IssueGroup(
 
     
 def test_ieeebus(model_forecasting, model_ieee, dataset_system_load):
+    """This function tests the forecasting model by running power flow simulations on the IEEE 39-bus system for the predicted loads. 
+    It checks for convergence, line overloads, transformer overloads, and voltage violations, and returns a list of issues found.
+    """
     loads = model_forecasting.predict(dataset_system_load).prediction
     print(loads)
     model_ieee.predict(loads)
