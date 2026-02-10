@@ -9,6 +9,7 @@ from ydata_profiling import ProfileReport
 from fastapi.responses import HTMLResponse
 import os
 import pandas as pd
+import json
 import giskard
 import importlib
 
@@ -125,6 +126,28 @@ async def list_submissions():
     # List only directories within the submissions root
     return [d.name for d in SUBMISSIONS_ROOT.iterdir() if d.is_dir()]
 
+
+@app.post("/upload/ieee_bus39_config")
+async def upload_ieeebus39_config(
+    submission_id: str = Query(...),
+    i_max_ka: Optional[float] = Query(None),
+    vmin: Optional[float] = Query(None),
+    vmax: Optional[float] = Query(None)): 
+    submission_dir = SUBMISSIONS_ROOT / submission_id
+    
+    config = {
+        "i_max_ka": i_max_ka or 1.2,
+        "vmin": vmin or 0.95,
+        "vmax": vmax or 1.05
+    }
+    
+    config_path = submission_dir / "ieeebus39_config"
+    with open(config_path, "w") as f:
+        json.dump(config, f)
+    
+    return {"status": "initialized", "config": config}
+    
+
 @app.post("/upload/model")
 async def upload_model(
     submission_id: str = Query(...),
@@ -150,31 +173,15 @@ async def upload_model(
             
     if os.path.exists(submission_dir / 'model_report.html'):
         os.remove(submission_dir / 'model_report.html')
-        
-    if model_type.lower() == "ieeebus39":
-        # Save parameters to a config file instead of a binary checkpoint
-        import json
-        config = {
-            "model_type": "ieeebus39",
-            "i_max_ka": i_max_ka or 1.2,
-            "vmin": vmin or 0.95,
-            "vmax": vmax or 1.05
-        }
-        config_path = submission_dir / "checkpoint_ieeebus39"
-        with open(config_path, "w") as f:
-            json.dump(config, f)
-        
-        return {"status": "initialized", "config": config}
     
-    else:
-        if not checkpoint_file:
-            raise HTTPException(status_code=400, detail="Checkpoint file required for ML models.")
-        
-        checkpoint_contents = await checkpoint_file.read()
-        checkpoint_path = submission_dir / f"checkpoint_{model_type.lower()}"
-        checkpoint_path.write_bytes(checkpoint_contents)
-        
-        return {"status": "uploaded"}
+    if not checkpoint_file:
+        raise HTTPException(status_code=400, detail="Checkpoint file required for ML models.")
+    
+    checkpoint_contents = await checkpoint_file.read()
+    checkpoint_path = submission_dir / f"checkpoint_{model_type.lower()}"
+    checkpoint_path.write_bytes(checkpoint_contents)
+    
+    return {"status": "uploaded"}
     
 @app.post("/upload/data")
 async def upload_data(
@@ -262,7 +269,7 @@ async def check_data(
 
 @app.get("/check_model")
 async def check_model(
-    submission_id: str = Query(...)
+    submission_id: str = Query(...),
 ):
     """
     Runs automatic tests listed in https://github.com/Giskard-AI/giskard-oss/tree/main/giskard/scanner,
@@ -287,11 +294,14 @@ async def check_model(
     if os.path.exists(submission_dir / 'model_report.html'):
         return HTMLResponse(content = (submission_dir / 'model_report.html').read_text())
     
+    #if os.path.exists(submission_dir / 'ieeebus39_config'):
+    #    raise HTTPException(status_code=400, detail="The ieeebus39 config must be initialized before checking the model")
+    
     if not os.path.exists(submission_dir / 'data.csv'):
         raise HTTPException(status_code=400, detail="The data.csv must be uploaded before checking the model")
     
     checkpoint_path = None
-    for type in ['xgboost','pytorch', 'ieeebus39']:
+    for type in ['xgboost','pytorch']:
         if os.path.exists(submission_dir / f'checkpoint_{type}'):
             checkpoint_path = submission_dir / f'checkpoint_{type}'
             break
@@ -306,10 +316,6 @@ async def check_model(
     data  = data.rename(columns={f"feature_{col}": col for col in features_columns})
     data  = data.rename(columns={f"target_{col}": col for col in target_columns})
     
-    if len(features_columns) == 0:
-        features_columns = [coloumn + '_dummy_feature' for coloumn in target_columns]
-        data[features_columns] = data[target_columns]
-    
     datasets = [
         giskard.Dataset(data, target = target_columns[i]) for i in range(len(target_columns))
     ]
@@ -318,40 +324,25 @@ async def check_model(
         type = 'pytorch'
         model = model_torch.Model(str(checkpoint_path))
     if 'xgboost' in str(checkpoint_path):
-        type = 'pytorch'
+        type = 'xgboost'
         model = model_xgb.Model(str(checkpoint_path))
-    if 'ieeebus39' in str(checkpoint_path):
-        type = 'ieeebus39'
-        model = model_ieeebus39.Model(str(checkpoint_path))
         
     model.load_checkpoint()
-
     
-    if type == 'ieeebus39':
-        
-        giskard_model=  giskard.Model(
-            model=lambda x: model.predict(x),
-            model_type="regression",
-            feature_names=features_columns,
-            test_modules=[ieee_bus_tests])
-        
-        dataset = giskard.Dataset(data[target_columns])                                 
-        
-        results = ieee_bus_tests.test_ieeebus(giskard_model, dataset, model, data[target_columns])
-        
-        print(results)
-        
-        custom_html = generate_gskard_report("IEEE Bus 39 Model", results)
-        
-        return HTMLResponse(content=custom_html)
-        
-
     giskard_models = [
-        giskard.Model(
-        model=lambda x: model.predict(x, i),
-        model_type="regression",
-        feature_names=features_columns) for i in range(len(target_columns))
-    ]
+                giskard.Model(
+                model=lambda x: model.predict(x, i),
+                model_type="regression",
+                feature_names=features_columns) for i in range(len(target_columns))
+        ]
+
+    ieee_model = model_ieeebus39.Model('ieeebus39_config')
+
+    results_ieee = []
+    for target, giskard_model, dataset in zip(target_columns, giskard_models, datasets):
+        scan_result = ieee_bus_tests.test_ieeebus(giskard_model, ieee_model, dataset)
+        custom_html = generate_gskard_report(target, scan_result)
+        results_ieee.append(custom_html) 
     
     results = []
     for target, giskard_model, dataset in zip(target_columns, giskard_models, datasets):
@@ -362,16 +353,21 @@ async def check_model(
     combined_html = f"""
     <html>
         <head>
-            <title>Giskard Batch Scan Report</title>
+            <title>Giskard and IEEEBUS39 Batch Scan Report</title>
             <style>
                 body {{ font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }}
                 .report-section {{ margin-bottom: 100px; border-top: 2px solid #eee; padding-top: 20px; }}
             </style>
         </head>
         <body>
-            <h1>Comprehensive Model Scan Report</h1>
+            <h1>Comprehensive Giskard Model Scan Report</h1>
             <p>Total targets scanned: {len(target_columns)}</p>
             {"".join([f'<div class="report-section">{report}</div>' for report in results])}
+        </body>
+        <body>
+            <h1>Comprehensive IEEEBUS39 Model Scan Report</h1>
+            <p>Total targets scanned: {len(target_columns)}</p>
+            {"".join([f'<div class="report-section">{report}</div>' for report in results_ieee])}
         </body>
     </html>
     """

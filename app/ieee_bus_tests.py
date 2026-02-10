@@ -46,9 +46,11 @@ Voltage_viol = IssueGroup(
 )
 
     
-def test_ieeebus(model_giskard, dataset_gisrkard, model, df):
-    model.predict(df)
-    results = model.results
+def test_ieeebus(model_forecasting, model_ieee, dataset_system_load):
+    loads = model_forecasting.predict(dataset_system_load).prediction
+    print(loads)
+    model_ieee.predict(loads)
+    results = model_ieee.results
     Issues = []
     
     not_converged_input_loads = []
@@ -56,11 +58,11 @@ def test_ieeebus(model_giskard, dataset_gisrkard, model, df):
      if results[i] is None:
         not_converged_input_loads.append(i)
     if len(not_converged_input_loads) > 0:
-        examples_df = pd.DataFrame({'input_loads': df.iloc[not_converged_input_loads].values.reshape(-1)})
+        examples_df = pd.DataFrame({'input_loads': loads[not_converged_input_loads].reshape(-1)})
         Issues.append(
             Issue(
-            model_giskard, 
-            dataset_gisrkard,
+            model_forecasting, 
+            dataset_system_load,
             Non_convergence,
             IssueLevel.MAJOR,
             description = f'Newton-raphson method did not converge.',
@@ -75,14 +77,14 @@ def test_ieeebus(model_giskard, dataset_gisrkard, model, df):
     if len(line_overloads) > 0:
         examples_df = pd.DataFrame(
             {
-                'input_loads': df.iloc[line_overloads].values.reshape(-1),
-                'overloaded_lines': [model.model.line.index[results[i]['over_line'] > 100].tolist() for i in line_overloads]
+                'input_loads': loads[line_overloads].reshape(-1),
+                'overloaded_lines': [model_ieee.model.line.index[results[i]['over_line'] > 100].tolist() for i in line_overloads]
             }
         )
         Issues.append(
             Issue(
-            model_giskard, 
-            dataset_gisrkard,
+            model_forecasting, 
+            dataset_system_load,
             Line_overload,
             IssueLevel.MAJOR,
             description = f'Some lines are overloaded.',
@@ -97,14 +99,14 @@ def test_ieeebus(model_giskard, dataset_gisrkard, model, df):
     if len(line_overloads) > 0:
         examples_df = pd.DataFrame(
             {
-                'input_loads': df.iloc[trans_overloads].values.reshape(-1),
-                'overloaded_transformers': [model.model.trafo.index[results[i]['over_trans'] > 100].tolist() for i in trans_overloads]
+                'input_loads': loads[trans_overloads].reshape(-1),
+                'overloaded_transformers': [model_ieee.model.trafo.index[results[i]['over_trans'] > 100].tolist() for i in trans_overloads]
             }
         )
         Issues.append(
             Issue(
-            model_giskard, 
-            dataset_gisrkard,
+            model_forecasting, 
+            dataset_system_load,
             Trans_overload,
             IssueLevel.MAJOR,
             description = f'Some transformers are overloaded.',
@@ -112,8 +114,8 @@ def test_ieeebus(model_giskard, dataset_gisrkard, model, df):
         )
     
     voltage_viloations = []
-    max_vm = np.array(model.model.bus["max_vm_pu"].tolist())
-    min_vm = np.array(model.model.bus["min_vm_pu"].tolist())
+    max_vm = np.array(model_ieee.model.bus["max_vm_pu"].tolist())
+    min_vm = np.array(model_ieee.model.bus["min_vm_pu"].tolist())
     
     for i in range(len(results)):
         if results[i] is not None and (sum(results[i]['vm'] > max_vm) or sum(results[i]['vm'] < min_vm)):
@@ -122,14 +124,14 @@ def test_ieeebus(model_giskard, dataset_gisrkard, model, df):
     if len(line_overloads) > 0:
         examples_df = pd.DataFrame(
             {
-                'input_loads': df.iloc[voltage_viloations].values.reshape(-1),
-                'buses_violated_voltage': [model.model.bus.index[(results[i]['vm'] > max_vm) | (results[i]['vm'] < min_vm)].tolist() for i in voltage_viloations]
+                'input_loads': loads[voltage_viloations].reshape(-1),
+                'buses_violated_voltage': [model_ieee.model.bus.index[(results[i]['vm'] > max_vm) | (results[i]['vm'] < min_vm)].tolist() for i in voltage_viloations]
             }
         )
         Issues.append(
             Issue(
-            model_giskard, 
-            dataset_gisrkard,
+            model_forecasting, 
+            dataset_system_load,
             Voltage_viol,
             IssueLevel.MAJOR,
             description = f'Some buses have too low or too high voltage.',

@@ -53,55 +53,24 @@ with tab1:
         # 1. Select Model Type
         model_type = st.selectbox(
             "Select Model Library",
-            options=["XGBoost", "PyTorch", "IEEEBUS39"],
-            help="Select the framework. IEEEBUS39 uses a physics-based simulation."
+            options=["XGBoost", "PyTorch"],
+            help="Select the framework"
         )
-
-        # 2. Conditional UI based on Model Selection
-        if model_type == "IEEEBUS39":
-            st.info("💡 Physical Simulation Mode: Configure grid constraints below.")
-            with st.form("ieee_params"):
-                i_max_ka = st.number_input("Max Line Current (i_max_ka)", value=1.2, step=0.1)
-                vmin = st.number_input("Min Voltage (v_min_pu)",value=0.95, step=0.1)
-                vmax = st.number_input("Max Voltage (v_max_pu)",value=1.05, step=0.1)
+        # Standard File Upload for XGBoost/PyTorch
+        st.info(f"Please upload your saved **{model_type}** file.")
+        checkpoint_file = st.file_uploader("Upload Model Checkpoint", type=["json", "pth"])
+        
+        if st.button("Submit Model"):
+            if checkpoint_file and submission_id:
+                files = {"checkpoint_file": (checkpoint_file.name, checkpoint_file.getvalue())}
+                params = {"submission_id": submission_id, "model_type": model_type.lower()}
                 
-                submit_ieee = st.form_submit_button("Initialize IEEE 39-Bus Model")
-                
-                if submit_ieee:
-                    params = {
-                        "submission_id": submission_id,
-                        "model_type": "ieeebus39",
-                        "i_max_ka": i_max_ka,
-                        "vmin": vmin,
-                        "vmax": vmax
-                    }
-                    with st.spinner("Configuring physics engine..."):
-                        try:
-                            # Sending parameters as JSON/Query rather than a file
-                            res = requests.post(f"{API_URL}/upload/model", params=params)
-                            if res.status_code == 200:
-                                st.success("✅ IEEE 39-Bus Engine Initialized!")
-                            else:
-                                st.error(f"❌ Initialization failed: {res.json().get('detail')}")
-                        except Exception as e:
-                            st.error(f"Connection Error: {e}")
-
-        else:
-            # Standard File Upload for XGBoost/PyTorch
-            st.info(f"Please upload your saved **{model_type}** file.")
-            checkpoint_file = st.file_uploader("Upload Model Checkpoint", type=["json", "pth"])
-            
-            if st.button("Submit Model"):
-                if checkpoint_file and submission_id:
-                    files = {"checkpoint_file": (checkpoint_file.name, checkpoint_file.getvalue())}
-                    params = {"submission_id": submission_id, "model_type": model_type.lower()}
-                    
-                    with st.spinner("Uploading model..."):
-                        res = requests.post(f"{API_URL}/upload/model", params=params, files=files)
-                        if res.status_code == 200:
-                            st.success(f"✅ {model_type} model uploaded!")
-                else:
-                    st.warning("Please select a file.")
+                with st.spinner("Uploading model..."):
+                    res = requests.post(f"{API_URL}/upload/model", params=params, files=files)
+                    if res.status_code == 200:
+                        st.success(f"✅ {model_type} model uploaded!")
+            else:
+                st.warning("Please select a file.")
 
     with col2:
         st.subheader("Dataset")
@@ -153,16 +122,58 @@ with tab2:
 
 # --- TAB 3: MODEL SCAN ---
 with tab3:
-    st.header("Giskard Model Scan")
-    st.markdown("Scans for robustness, bias, and data leakage (EU AI Act Compliance).")
-    
-    if st.button("Run Comprehensive Scan"):
-        with st.spinner("Scanning model (this may take a minute)..."):
-            try:
-                res = requests.get(f"{API_URL}/check_model", params={"submission_id": submission_id})
+    st.header("Model Scan & Simulation")
+
+    scan_mode = st.radio(
+        "Select Scan Type",
+        ["Standard Model Scan (Giskard)", "IEEE 39-Bus Physical Simulation"]
+    )
+
+    # -------------------------
+    # STANDARD MODEL SCAN
+    # -------------------------
+    if scan_mode == "Standard Model Scan (Giskard)":
+        st.markdown("Scans for robustness, bias, and data leakage (EU AI Act Compliance).")
+
+        if st.button("Run Comprehensive Scan"):
+            with st.spinner("Scanning model (this may take a minute)..."):
+                try:
+                    res = requests.get(
+                        f"{API_URL}/check_model",
+                        params={"submission_id": submission_id}
+                    )
+                    if res.status_code == 200:
+                        st.components.v1.html(res.text, height=1000, scrolling=True)
+                    else:
+                        st.error(res.json().get("detail", "Error during scan"))
+                except Exception as e:
+                    st.error(f"Connection Error: {e}")
+
+    # -------------------------
+    # IEEE BUS 39 SIMULATION
+    # ------------------------- 
+    else:
+        st.info("⚡ Configure and run IEEE 39-Bus physical grid simulation.")
+        params = None
+        with st.form("ieee_params"):
+            i_max_ka = st.number_input("Max Line Current (i_max_ka)", value=1.2, step=0.1)
+            vmin = st.number_input("Min Voltage (v_min_pu)", value=0.95, step=0.01)
+            vmax = st.number_input("Max Voltage (v_max_pu)", value=1.05, step=0.01)
+            submited = st.form_submit_button()
+            
+            if submited: 
+                params = {
+                    'submission_id': submission_id,
+                    'i_max_ka': i_max_ka,
+                    'vmin': vmin,
+                    'vmax': vmax
+                }
+                res = requests.post(f"{API_URL}/upload/ieee_bus39_config", params=params)
                 if res.status_code == 200:
-                    st.components.v1.html(res.text, height=1000, scrolling=True)
+                    st.write("Submitted")
                 else:
-                    st.error(res.json().get("detail", "Error during scan"))
-            except Exception as e:
-                st.error(f"Connection Error: {e}")
+                     st.warning(res.json().get("detail", "Error writing ieeebus39 config"))
+                
+                
+    
+        

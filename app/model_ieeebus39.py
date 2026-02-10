@@ -21,7 +21,6 @@ def apply_total_load(net, total_p_mw, pf=0.95):
     base_p = net.load["p_mw"].values
     base_total = base_p.sum()
     k = float(total_p_mw) / float(base_total)
-    
     net.load["p_mw"] = base_p * k
     # Q = P * tan(acos(pf))
     q_ratio = np.tan(np.arccos(pf))
@@ -53,13 +52,13 @@ class Model:
             # Fallback to defaults if file is missing
             self.model = build_net()
     
-    def predict(self, df):
+    def predict(self, loads):
         """
         Runs power flow for each row in the dataframe.
         Expects df to have a column representing total load (MW).
         """
         # Giskard/Scanners usually pass a DataFrame; we extract the load column
-        total_p_mws = df.values.flatten()
+        total_p_mws = loads
         detailed_results = []
         
         for total_p_mw in total_p_mws:
